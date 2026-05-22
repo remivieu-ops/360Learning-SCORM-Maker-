@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>360Learning → SCORM Converter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --bg2: #13161d;
+    --bg3: #1a1e28;
+    --bg4: #222736;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e8eaf0;
+    --muted: #7a8099;
+    --accent: #5b8af7;
+    --accent2: #3dd68c;
+    --accent3: #f7a35b;
+    --danger: #f75b6b;
+    --mono: 'DM Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  body {
+    font-family: var(--mono);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+  }
+  .logo-icon {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .logo span { color: var(--muted); font-weight: 400; }
+
+  .badge-scorm {
+    font-size: 10px;
+    font-family: var(--mono);
+    background: rgba(91,138,247,0.15);
+    color: var(--accent);
+    border: 1px solid rgba(91,138,247,0.3);
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  /* ─── MAIN LAYOUT ─── */
+  .shell {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    min-height: calc(100vh - 60px);
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    background: var(--bg2);
+  }
+
+  .step-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .step-num {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--bg4);
+    border: 1px solid var(--border2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .step-num.done { background: rgba(61,214,140,0.15); border-color: rgba(61,214,140,0.4); color: var(--accent2); }
+  .step-num.active { background: rgba(91,138,247,0.15); border-color: rgba(91,138,247,0.4); color: var(--accent); }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 1.5px dashed var(--border2);
+    border-radius: 10px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg3);
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(91,138,247,0.06); }
+  .upload-zone input[type=file] { display: none; }
+  .upload-icon { font-size: 28px; margin-bottom: 10px; opacity: 0.5; }
+  .upload-zone p { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .upload-zone strong { font-size: 13px; color: var(--text); display: block; margin-bottom: 4px; }
+
+  .file-loaded {
+    display: none;
+    background: rgba(61,214,140,0.08);
+    border: 1px solid rgba(61,214,140,0.2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    gap: 8px;
+    align-items: center;
+  }
+  .file-loaded.show { display: flex; }
+  .file-loaded svg { flex-shrink: 0; color: var(--accent2); }
+
+  /* Module list */
+  .module-search {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 10px;
+  }
+  .module-search:focus { border-color: var(--accent); }
+  .module-search::placeholder { color: var(--muted); }
+
+  .module-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .module-list::-webkit-scrollbar { width: 4px; }
+  .module-list::-webkit-scrollbar-track { background: transparent; }
+  .module-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .module-item {
+    padding: 9px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    background: var(--bg3);
+    font-size: 11.5px;
+  }
+  .module-item:hover { background: var(--bg4); border-color: var(--border2); }
+  .module-item.selected { background: rgba(91,138,247,0.1); border-color: rgba(91,138,247,0.35); color: #a8bfff; }
+  .module-item .mod-name { color: inherit; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .module-item .mod-meta { font-size: 10px; color: var(--muted); margin-top: 2px; display: flex; gap: 8px; }
+  .mod-tag {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--bg4);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .mod-tag.native { background: rgba(61,214,140,0.1); color: #5fe8a0; border-color: rgba(61,214,140,0.2); }
+
+  .empty-state { font-size: 12px; color: var(--muted); text-align: center; padding: 20px; }
+
+  /* Generate button */
+  .btn-generate {
+    width: 100%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-generate:hover:not(:disabled) { background: #6e9bff; transform: translateY(-1px); }
+  .btn-generate:disabled { background: var(--bg4); color: var(--muted); cursor: not-allowed; transform: none; }
+
+  /* ─── MAIN CONTENT ─── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Welcome */
+  .welcome {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 40px;
+    text-align: center;
+    gap: 16px;
+  }
+  .welcome h1 {
+    font-family: var(--display);
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.15;
+    color: var(--text);
+  }
+  .welcome h1 em { font-style: normal; color: var(--accent); }
+  .welcome p { font-size: 13px; color: var(--muted); max-width: 420px; line-height: 1.7; }
+  .steps-row {
+    display: flex;
+    gap: 0;
+    margin-top: 20px;
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .step-box {
+    padding: 18px 22px;
+    border-right: 1px solid var(--border2);
+    flex: 1;
+    text-align: left;
+  }
+  .step-box:last-child { border-right: none; }
+  .step-box-num { font-size: 11px; color: var(--accent); font-weight: 500; margin-bottom: 6px; }
+  .step-box-title { font-size: 12.5px; color: var(--text); }
+  .step-box-desc { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* Preview + download panel */
+  .preview-panel {
+    display: none;
+    flex-direction: column;
+    height: calc(100vh - 60px);
+  }
+  .preview-panel.show { display: flex; }
+
+  .preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .preview-title {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .preview-info { font-size: 11px; color: var(--muted); }
+
+  .tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--bg3);
+    padding: 3px;
+    border-radius: 7px;
+  }
+  .tab {
+    padding: 5px 14px;
+    border-radius: 5px;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all 0.15s;
+    border: none;
+    background: transparent;
+    font-family: var(--mono);
+  }
+  .tab.active { background: var(--bg4); color: var(--text); }
+
+  .btn-dl {
+    background: var(--accent2);
+    color: #0a1a10;
+    border: none;
+    border-radius: 7px;
+    padding: 8px 18px;
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    transition: all 0.2s;
+  }
+  .btn-dl:hover { background: #56eea5; transform: translateY(-1px); }
+
+  .preview-body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Content preview */
+  .content-preview {
+    height: 100%;
+    overflow-y: auto;
+    padding: 28px 40px;
+    display: none;
+  }
+  .content-preview.active { display: block; }
+  .content-preview::-webkit-scrollbar { width: 5px; }
+  .content-preview::-webkit-scrollbar-track { background: transparent; }
+  .content-preview::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  .slide-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .slide-card-header {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg3);
+  }
+  .slide-card-header h3 { font-size: 13px; font-weight: 500; font-family: var(--display); }
+  .slide-type-badge {
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+  .badge-content { background: rgba(91,138,247,0.12); color: var(--accent); border: 1px solid rgba(91,138,247,0.25); }
+  .badge-quiz { background: rgba(247,163,91,0.12); color: var(--accent3); border: 1px solid rgba(247,163,91,0.25); }
+  .badge-info { background: rgba(61,214,140,0.1); color: var(--accent2); border: 1px solid rgba(61,214,140,0.2); }
+  .slide-card-body { padding: 16px 18px; font-size: 12px; color: var(--muted); }
+  .slide-card-body p, .slide-card-body li { line-height: 1.7; margin-bottom: 6px; }
+  .answer-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 5px; margin-top: 5px; border: 1px solid var(--border); background: var(--bg3); font-size: 11.5px; }
+  .answer-row.valid { border-color: rgba(61,214,140,0.3); background: rgba(61,214,140,0.06); color: #7ee8b2; }
+  .answer-row .check { font-size: 11px; }
+
+  /* SCO preview (iframe) */
+  .sco-preview {
+    height: 100%;
+    display: none;
+    flex-direction: column;
+  }
+  .sco-preview.active { display: flex; }
+  .sco-preview iframe {
+    flex: 1;
+    border: none;
+    background: white;
+  }
+
+  /* Structure preview */
+  .structure-preview {
+    height: 100%;
+    overflow-y: auto;
+    padding: 28px 40px;
+    display: none;
+  }
+  .structure-preview.active { display: block; }
+  .struct-file {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .struct-file:hover { background: var(--bg3); }
+  .struct-file .ficon { color: var(--accent); font-size: 13px; }
+  .struct-file .fname { color: var(--text); flex: 1; }
+  .struct-file .fsize { color: var(--muted); font-size: 10px; }
+  .struct-indent { margin-left: 24px; }
+
+  .xml-block {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 11px;
+    color: #a8c0ff;
+    overflow-x: auto;
+    white-space: pre;
+    margin-top: 12px;
+    display: none;
+    line-height: 1.7;
+  }
+  .xml-block .tag { color: #6e9bff; }
+  .xml-block .attr { color: #f7a35b; }
+  .xml-block .val { color: #3dd68c; }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .stat { }
+  .stat-val { font-family: var(--display); font-size: 22px; font-weight: 800; color: var(--text); }
+  .stat-label { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
+
+  /* Progress */
+  .progress-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .progress-overlay.show { display: flex; }
+  .progress-box {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    padding: 32px 40px;
+    text-align: center;
+    min-width: 300px;
+  }
+  .progress-box h3 { font-family: var(--display); font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .progress-box p { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+  .progress-track { background: var(--bg4); border-radius: 4px; height: 4px; overflow: hidden; }
+  .progress-fill { height: 4px; background: var(--accent); border-radius: 4px; transition: width 0.3s; width: 0%; }
+
+  .notification {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 12px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    z-index: 300;
+    animation: slideIn 0.3s ease;
+  }
+  .notification.show { display: flex; }
+  @keyframes slideIn { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    360Learning <span>→</span> SCORM <span class="badge-scorm">2004</span>
+  </div>
+  <div style="font-size:11px; color:var(--muted);">Export native modules to SCORM 2004 packages</div>
+</header>
+
+<div class="shell">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <!-- Step 1: Upload -->
+    <div>
+      <div class="step-label">
+        <span class="step-num active" id="sn1">1</span>
+        Import JSON export
+      </div>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".json" onchange="loadJSON(event)">
+        <div class="upload-icon">📂</div>
+        <strong>Drop your 360Learning export</strong>
+        <p>or click to browse — .json file only</p>
+      </div>
+      <div class="file-loaded" id="fileLoaded">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <span id="fileInfo" style="font-size:11px;"></span>
+      </div>
+    </div>
+
+    <!-- Step 2: Select module -->
+    <div>
+      <div class="step-label">
+        <span class="step-num" id="sn2">2</span>
+        Select a module
+      </div>
+      <input class="module-search" id="searchInput" type="text" placeholder="Search modules..." oninput="filterModules()" disabled>
+      <div class="module-list" id="moduleList">
+        <div class="empty-state">Import a JSON file to see modules</div>
+      </div>
+    </div>
+
+    <!-- Step 3: Generate -->
+    <div>
+      <div class="step-label">
+        <span class="step-num" id="sn3">3</span>
+        Export to SCORM
+      </div>
+      <button class="btn-generate" id="btnGenerate" onclick="generateSCORM()" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        Generate SCORM package
+      </button>
+    </div>
+
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- Welcome screen -->
+    <div class="welcome" id="welcomeScreen">
+      <h1>Convert 360Learning<br>modules to <em>SCORM</em></h1>
+      <p>Export native 360Learning modules as SCORM 2004 packages, ready to import into any LMS — Moodle, Docebo, TalentLMS, SAP SuccessFactors, and more.</p>
+      <div class="steps-row">
+        <div class="step-box">
+          <div class="step-box-num">01</div>
+          <div class="step-box-title">Import JSON</div>
+          <div class="step-box-desc">Your 360Learning platform export</div>
+        </div>
+        <div class="step-box">
+          <div class="step-box-num">02</div>
+          <div class="step-box-title">Pick a module</div>
+          <div class="step-box-desc">Browse and select from your library</div>
+        </div>
+        <div class="step-box">
+          <div class="step-box-num">03</div>
+          <div class="step-box-title">Preview</div>
+          <div class="step-box-desc">Review content before export</div>
+        </div>
+        <div class="step-box">
+          <div class="step-box-num">04</div>
+          <div class="step-box-title">Download .zip</div>
+          <div class="step-box-desc">Import directly into your LMS</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview panel -->
+    <div class="preview-panel" id="previewPanel">
+      <div class="preview-toolbar">
+        <div>
+          <div class="preview-title" id="previewTitle">—</div>
+          <div class="preview-info" id="previewInfo">—</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="tabs">
+            <button class="tab active" onclick="switchTab('content')">Content</button>
+            <button class="tab" onclick="switchTab('sco')">Live preview</button>
+            <button class="tab" onclick="switchTab('structure')">SCORM files</button>
+          </div>
+          <button class="btn-dl" id="btnDownload" onclick="downloadZip()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download .zip
+          </button>
+        </div>
+      </div>
+
+      <div class="preview-body">
+        <!-- Content tab -->
+        <div class="content-preview active" id="tabContent"></div>
+
+        <!-- Live SCO preview tab -->
+        <div class="sco-preview" id="tabSco">
+          <iframe id="scoFrame" title="SCORM module preview"></iframe>
+        </div>
+
+        <!-- Structure tab -->
+        <div class="structure-preview" id="tabStructure">
+          <div style="margin-bottom:20px;">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:10px; letter-spacing:0.06em; text-transform:uppercase;">Package structure</div>
+            <div class="struct-file"><span class="ficon">📦</span><span class="fname" style="color:var(--accent2);" id="zipName">module.zip</span><span class="fsize" id="zipSize">—</span></div>
+            <div class="struct-indent">
+              <div class="struct-file" onclick="toggleXml('manifest')"><span class="ficon">📄</span><span class="fname">imsmanifest.xml</span><span class="fsize">SCORM 2004 manifest</span></div>
+              <pre class="xml-block" id="xml-manifest"></pre>
+              <div class="struct-file" onclick="toggleXml('metadata')"><span class="ficon">📄</span><span class="fname">metadata.xml</span><span class="fsize">LOM metadata</span></div>
+              <pre class="xml-block" id="xml-metadata"></pre>
+              <div class="struct-indent">
+                <div class="struct-file"><span class="ficon">🌐</span><span class="fname">content/index.html</span><span class="fsize" id="htmlSize">—</span></div>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:10px; letter-spacing:0.06em; text-transform:uppercase;">Compatibility</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
+            <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px;">
+              <div style="color:var(--accent2); margin-bottom:4px;">✓ Moodle</div><div style="color:var(--muted);">SCORM activity</div>
+            </div>
+            <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px;">
+              <div style="color:var(--accent2); margin-bottom:4px;">✓ TalentLMS</div><div style="color:var(--muted);">Upload as SCORM</div>
+            </div>
+            <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px;">
+              <div style="color:var(--accent2); margin-bottom:4px;">✓ Docebo</div><div style="color:var(--muted);">SCORM 2004 import</div>
+            </div>
+            <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px;">
+              <div style="color:var(--accent2); margin-bottom:4px;">✓ SAP SuccessFactors</div><div style="color:var(--muted);">Content package</div>
+            </div>
+            <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px;">
+              <div style="color:var(--accent2); margin-bottom:4px;">✓ Cornerstone</div><div style="color:var(--muted);">SCORM 2004 support</div>
+            </div>
+            <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px;">
+              <div style="color:var(--accent2); margin-bottom:4px;">✓ Any LMS</div><div style="color:var(--muted);">SCORM 2004 standard</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Progress overlay -->
+<div class="progress-overlay" id="progressOverlay">
+  <div class="progress-box">
+    <h3>Generating SCORM package...</h3>
+    <p id="progressMsg">Processing module content</p>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+</div>
+
+<!-- Notification -->
+<div class="notification" id="notif">
+  <span id="notifIcon"></span>
+  <span id="notifMsg"></span>
+</div>
+
+<script>
+var jsonData = null;
+var allModules = [];
+var selectedModule = null;
+var generatedZipBlob = null;
+var generatedHtml = '';
+var generatedManifest = '';
+var generatedMetadata = '';
+
+// ─── DRAG & DROP ───
+var uz = document.getElementById('uploadZone');
+uz.addEventListener('dragover', function(e){ e.preventDefault(); uz.classList.add('drag'); });
+uz.addEventListener('dragleave', function(){ uz.classList.remove('drag'); });
+uz.addEventListener('drop', function(e){
+  e.preventDefault(); uz.classList.remove('drag');
+  var f = e.dataTransfer.files[0];
+  if(f && f.name.endsWith('.json')) processFile(f);
+  else notify('❌', 'Please drop a .json file');
+});
+
+// ─── LOAD JSON ───
+function loadJSON(e){
+  var f = e.target.files[0];
+  if(!f) return;
+  processFile(f);
+}
+
+function processFile(file){
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      jsonData = JSON.parse(e.target.result);
+      if(!jsonData.courses) throw new Error('Missing courses key');
+      buildModuleList();
+      document.getElementById('fileLoaded').classList.add('show');
+      document.getElementById('fileInfo').textContent = file.name + ' — ' + jsonData.courses.length + ' modules found';
+      document.getElementById('uploadZone').style.display = 'none';
+      document.getElementById('sn1').classList.remove('active');
+      document.getElementById('sn1').classList.add('done');
+      document.getElementById('sn1').textContent = '✓';
+      document.getElementById('sn2').classList.add('active');
+      document.getElementById('searchInput').disabled = false;
+      notify('✅', 'JSON imported — ' + jsonData.courses.length + ' modules available');
+    } catch(err){
+      notify('❌', 'Invalid JSON file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ─── BUILD MODULE LIST ───
+function buildModuleList(){
+  var sheetsById = {};
+  (jsonData.sheets||[]).forEach(function(s){ sheetsById[s._id] = s; });
+  var questionsById = {};
+  (jsonData.questions||[]).forEach(function(q){ questionsById[q._id] = q; });
+
+  allModules = (jsonData.courses||[])
+    .filter(function(c){ return c.name && c.name.trim(); })
+    .map(function(c){
+      var elements = c.elements||[];
+      var sheets = elements.filter(function(e){ return e.collection==='sheets' && sheetsById[e._id] && sheetsById[e._id].body; }).length;
+      var questions = elements.filter(function(e){ return e.collection==='questions' && questionsById[e._id]; }).length;
+      var langLabel = c.defaultLang || 'en';
+      var name = c.name || 'Untitled';
+      // Get FR name if available
+      if(Array.isArray(c.translations)){
+        var fr = c.translations.find(function(t){ return t.lang==='fr' && t.name; });
+        if(fr) name = fr.name;
+      }
+      return { id: c._id, name: name, type: c.type||'native', lang: langLabel, sheets: sheets, questions: questions, raw: c };
+    })
+    .sort(function(a,b){ return b.sheets+b.questions - (a.sheets+a.questions); });
+
+  renderModuleList(allModules);
+}
+
+function renderModuleList(modules){
+  var list = document.getElementById('moduleList');
+  if(!modules.length){
+    list.innerHTML = '<div class="empty-state">No modules match your search</div>';
+    return;
+  }
+  list.innerHTML = modules.map(function(m){
+    var sel = selectedModule && selectedModule.id === m.id ? ' selected' : '';
+    var typeTag = m.type==='native' ? '<span class="mod-tag native">native</span>' : '<span class="mod-tag">'+m.type+'</span>';
+    return '<div class="module-item'+sel+'" onclick="selectMod(\''+m.id+'\')" title="'+escHtml(m.name)+'">'+
+      '<div class="mod-name">'+escHtml(m.name)+'</div>'+
+      '<div class="mod-meta">'+typeTag+'<span class="mod-tag">'+m.lang.toUpperCase()+'</span>'+
+      (m.sheets ? '<span class="mod-tag">'+m.sheets+' slides</span>' : '')+
+      (m.questions ? '<span class="mod-tag">'+m.questions+' questions</span>' : '')+
+      '</div></div>';
+  }).join('');
+}
+
+function filterModules(){
+  var q = document.getElementById('searchInput').value.toLowerCase();
+  var filtered = allModules.filter(function(m){ return m.name.toLowerCase().includes(q); });
+  renderModuleList(filtered);
+}
+
+function selectMod(id){
+  selectedModule = allModules.find(function(m){ return m.id===id; });
+  renderModuleList(allModules.filter(function(m){
+    var q = document.getElementById('searchInput').value.toLowerCase();
+    return m.name.toLowerCase().includes(q);
+  }));
+  document.getElementById('sn2').classList.remove('active');
+  document.getElementById('sn2').classList.add('done');
+  document.getElementById('sn2').textContent = '✓';
+  document.getElementById('sn3').classList.add('active');
+  document.getElementById('btnGenerate').disabled = false;
+}
+
+// ─── GENERATE SCORM ───
+function generateSCORM(){
+  if(!selectedModule) return;
+  var overlay = document.getElementById('progressOverlay');
+  overlay.classList.add('show');
+  setProgress(10, 'Extracting module content...');
+
+  setTimeout(function(){
+    try {
+      var elements = buildElements(selectedModule.raw);
+      setProgress(40, 'Building interactive HTML...');
+      setTimeout(function(){
+        generatedHtml = buildHTML(selectedModule, elements);
+        generatedManifest = buildManifest(selectedModule);
+        generatedMetadata = buildMetadata(selectedModule);
+        setProgress(70, 'Packaging SCORM files...');
+        setTimeout(function(){
+          var zip = new JSZip();
+          zip.file('imsmanifest.xml', generatedManifest);
+          zip.file('metadata.xml', generatedMetadata);
+          zip.file('content/index.html', generatedHtml);
+          zip.generateAsync({type:'blob', compression:'DEFLATE'}).then(function(blob){
+            generatedZipBlob = blob;
+            setProgress(100, 'Done!');
+            setTimeout(function(){
+              overlay.classList.remove('show');
+              showPreview(elements);
+              notify('✅', 'SCORM package ready — click Download .zip');
+            }, 400);
+          });
+        }, 300);
+      }, 300);
+    } catch(err){
+      overlay.classList.remove('show');
+      notify('❌', 'Error: ' + err.message);
+    }
+  }, 200);
+}
+
+function setProgress(pct, msg){
+  document.getElementById('progressFill').style.width = pct+'%';
+  document.getElementById('progressMsg').textContent = msg;
+}
+
+// ─── BUILD ELEMENTS ───
+function buildElements(course){
+  var sheetsById = {};
+  (jsonData.sheets||[]).forEach(function(s){ sheetsById[s._id] = s; });
+  var questionsById = {};
+  (jsonData.questions||[]).forEach(function(q){ questionsById[q._id] = q; });
+
+  var elements = [];
+  (course.elements||[]).forEach(function(el){
+    var id = el._id, col = el.collection;
+    if(col==='sheets' && sheetsById[id]){
+      var s = sheetsById[id];
+      var body = cleanHtml(s.body||'');
+      if(body.trim()) elements.push({type:'sheet', name: s.name||'Content', body: body});
+    } else if(col==='questions' && questionsById[id]){
+      var q = questionsById[id];
+      var qt = q.qtype||'';
+      if(['questionMC','questionSingleSelection','questionTF'].includes(qt)){
+        elements.push({type:'question', name:q.name||'Question', qtype:qt,
+          answers:q.answers||[], correction:cleanHtml(q.correction||'')});
+      } else {
+        elements.push({type:'info', name:q.name||'Activity', body:'<p>This activity type requires interactive features not available in standard SCORM.</p>'});
+      }
+    }
+  });
+  return elements;
+}
+
+function cleanHtml(html){
+  return html.replace(/ data-start="[^"]*"/g,'').replace(/ data-end="[^"]*"/g,'');
+}
+
+// ─── BUILD HTML ───
+function buildHTML(mod, elements){
+  var title = escHtml(mod.name);
+  var total = elements.length;
+
+  var slidesHtml = elements.map(function(el, idx){
+    if(el.type==='sheet') return renderSheet(el, idx, total);
+    if(el.type==='question') return renderQuestion(el, idx, total);
+    return renderInfo(el, idx, total);
+  }).join('');
+
+  var maxScore = elements.filter(function(e){ return e.type==='question'; }).length;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;min-height:100vh}
+.wrap{max-width:820px;margin:0 auto;padding:20px}
+.hdr{background:linear-gradient(135deg,#1a1a2e,#0f3460);color:#fff;border-radius:14px;padding:28px 32px;margin-bottom:20px}
+.hdr h1{font-size:1.5rem;font-weight:700;margin-bottom:6px}
+.hdr p{opacity:.7;font-size:.85rem}
+.prog-wrap{background:rgba(255,255,255,.2);border-radius:100px;height:5px;margin-top:14px}
+.prog-bar{background:#5bf0a0;height:5px;border-radius:100px;transition:width .4s;width:0%}
+.prog-lbl{font-size:.75rem;opacity:.6;margin-top:5px}
+.slide{background:#fff;border-radius:14px;padding:32px;box-shadow:0 2px 20px rgba(0,0,0,.07);min-height:380px;display:flex;flex-direction:column;display:none}
+.slide.active{display:flex}
+.slide-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.badge{padding:4px 12px;border-radius:100px;font-size:.75rem;font-weight:600}
+.badge-content{background:#e8f4fd;color:#0f3460}
+.badge-quiz{background:#fff3cd;color:#856404}
+.badge-info{background:#e8f8f0;color:#1a6b3c}
+.ctr{color:#aaa;font-size:.8rem}
+.slide-title{font-size:1.2rem;font-weight:700;color:#0f3460;margin-bottom:16px;line-height:1.4}
+.body-content{flex:1;line-height:1.8;font-size:.93rem;color:#333}
+.body-content p{margin-bottom:10px}
+.body-content ol,.body-content ul{margin:10px 0 10px 22px}
+.body-content li{margin-bottom:5px}
+.body-content strong{color:#0f3460}
+.answers{display:flex;flex-direction:column;gap:10px;margin:8px 0 18px;flex:1}
+.ans{display:flex;align-items:center;gap:12px;padding:12px 16px;border:2px solid #e0e7ff;border-radius:9px;cursor:pointer;transition:all .2s;background:#fafbff}
+.ans:hover{border-color:#6b8eff;background:#f0f3ff}
+.ans.sel{border-color:#0f3460;background:#e8eeff}
+.ans.ok{border-color:#2ecc71;background:#eafaf1;pointer-events:none}
+.ans.ko{border-color:#e74c3c;background:#fdf0ef;pointer-events:none}
+.ans-letter{width:30px;height:30px;border-radius:50%;background:#e0e7ff;color:#0f3460;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.8rem;flex-shrink:0}
+.ans-txt{font-size:.9rem}
+.val-btn{background:linear-gradient(135deg,#0f3460,#16213e);color:#fff;border:none;padding:11px 26px;border-radius:7px;font-size:.9rem;font-weight:600;cursor:pointer;align-self:flex-start}
+.val-btn:hover{opacity:.85}
+.val-btn:disabled{background:#ccc;cursor:default}
+.correction{background:#fffbe6;border-left:4px solid #f39c12;padding:12px 16px;border-radius:0 7px 7px 0;margin:10px 0;font-size:.85rem;color:#555;display:none}
+.nav{display:flex;justify-content:space-between;margin-top:20px}
+.nav-btn{background:#fff;border:2px solid #0f3460;color:#0f3460;padding:9px 22px;border-radius:7px;font-weight:600;cursor:pointer;transition:all .2s;font-size:.85rem}
+.nav-btn:hover{background:#0f3460;color:#fff}
+.nav-btn:disabled{border-color:#ddd;color:#ccc;cursor:default}
+.nav-btn.prim{background:#0f3460;color:#fff}
+.done-screen{display:none;background:#fff;border-radius:14px;padding:50px 32px;box-shadow:0 2px 20px rgba(0,0,0,.07);text-align:center}
+.done-icon{font-size:3.5rem;margin-bottom:16px}
+.done-screen h2{font-size:1.4rem;font-weight:700;color:#0f3460;margin-bottom:10px}
+.done-screen p{color:#666;font-size:.9rem;margin-bottom:6px}
+.score-pill{display:inline-block;background:linear-gradient(135deg,#0f3460,#53d8fb);color:#fff;padding:8px 24px;border-radius:100px;font-size:1.1rem;font-weight:700;margin:14px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="hdr">
+  <h1>🎓 ${title}</h1>
+  <p>Interactive learning module</p>
+  <div class="prog-wrap"><div class="prog-bar" id="pb"></div></div>
+  <div class="prog-lbl" id="pl">0 / ${total} slides completed</div>
+</div>
+<div id="slides">${slidesHtml}</div>
+<div class="done-screen" id="doneScreen">
+  <div class="done-icon">🎓</div>
+  <h2>Module complete!</h2>
+  <p>You've finished:</p>
+  <p><strong>${title}</strong></p>
+  <div class="score-pill" id="finalScore">Score: -- / --</div>
+  <p style="margin-top:10px;color:#aaa;font-size:.8rem">Your progress has been recorded.</p>
+</div>
+<div class="nav">
+  <button class="nav-btn" id="prevBtn" onclick="go(-1)" disabled>← Previous</button>
+  <button class="nav-btn prim" id="nextBtn" onclick="go(1)">Next →</button>
+</div>
+</div>
+<script>
+var API=null,cur=0,tot=${total},score=0,maxScore=${maxScore},done=false;
+function findAPI(w){if(w.API_1484_11)return w.API_1484_11;if(w.API)return w.API;if(w.parent&&w.parent!==w)return findAPI(w.parent);return null;}
+function initSCORM(){API=findAPI(window);if(API){try{API.Initialize('');API.SetValue('cmi.completion_status','incomplete');API.SetValue('cmi.score.min','0');API.SetValue('cmi.score.max','${maxScore}');}catch(e){}}}
+function updProg(){var p=Math.round(cur/tot*100);document.getElementById('pb').style.width=p+'%';document.getElementById('pl').textContent=cur+' / '+tot+' slides completed';if(API){try{API.SetValue('cmi.progress_measure',String(p/100));API.SetValue('cmi.location',String(cur));API.Commit('');}catch(e){}}}
+function show(idx){document.querySelectorAll('.slide').forEach(function(s){s.classList.remove('active');});var s=document.getElementById('s'+idx);if(s)s.classList.add('active');document.getElementById('prevBtn').disabled=(idx===0);document.getElementById('nextBtn').textContent=idx===tot-1?'Finish ✓':'Next →';if(idx+1>cur){cur=idx+1;updProg();}}
+function go(d){var slides=document.querySelectorAll('.slide');var ci=-1;slides.forEach(function(s,i){if(s.classList.contains('active'))ci=i;});var nx=ci+d;if(nx<0)return;if(nx>=tot){finish();return;}show(nx);}
+function selAns(el,valid,qid){var slide=el.closest('.slide');if(slide.dataset.ans==='true')return;var multi=slide.dataset.multi==='true';if(!multi)slide.querySelectorAll('.ans').forEach(function(a){a.classList.remove('sel');});el.classList.toggle('sel');}
+function validate(idx){var slide=document.getElementById('s'+idx);if(slide.dataset.ans==='true')return;var sel=slide.querySelectorAll('.ans.sel');if(!sel.length)return;slide.dataset.ans='true';var ok=true;slide.querySelectorAll('.ans').forEach(function(a){var v=a.getAttribute('onclick').includes('true');var s=a.classList.contains('sel');if(v&&s)a.classList.add('ok');else if(!v&&s){a.classList.add('ko');ok=false;}else if(v&&!s){a.classList.add('ok');ok=false;}a.classList.remove('sel');});if(ok)score++;var corr=document.getElementById('c'+idx);if(corr)corr.style.display='block';document.getElementById('v'+idx).disabled=true;if(API&&maxScore>0){try{API.SetValue('cmi.score.raw',String(score));API.SetValue('cmi.score.scaled',String(score/maxScore));API.Commit('');}catch(e){}}}
+function finish(){document.getElementById('slides').style.display='none';document.getElementById('doneScreen').style.display='block';document.getElementById('nextBtn').style.display='none';document.getElementById('prevBtn').style.display='none';document.getElementById('finalScore').textContent=maxScore>0?'Score: '+score+' / '+maxScore:'Module complete!';if(API){try{API.SetValue('cmi.completion_status','completed');API.SetValue('cmi.success_status',maxScore>0&&score>=Math.ceil(maxScore*.7)?'passed':'failed');API.Commit('');API.Terminate('');}catch(e){}}done=true;updProg();}
+window.onload=function(){initSCORM();show(0);};
+window.onunload=function(){if(API&&!done)try{API.Terminate('');}catch(e){}};
+<\/script>
+</body>
+</html>`;
+}
+
+function renderSheet(el, idx, total){
+  return '<div class="slide" id="s'+idx+'"><div class="slide-hdr"><span class="badge badge-content">📖 Content</span><span class="ctr">'+(idx+1)+' / '+total+'</span></div><h2 class="slide-title">'+escHtml(el.name)+'</h2><div class="body-content">'+el.body+'</div></div>';
+}
+function renderQuestion(el, idx, total){
+  var multi = el.qtype==='questionMC' ? 'true':'false';
+  var answers = (el.answers||[]).map(function(a, i){
+    var valid = a.valid ? 'true':'false';
+    return '<div class="ans" onclick="selAns(this,'+valid+',\'q'+idx+'\')"><span class="ans-letter">'+String.fromCharCode(65+i)+'</span><span class="ans-txt">'+escHtml(a.label||'')+'</span></div>';
+  }).join('');
+  var correction = el.correction ? '<div class="correction" id="c'+idx+'"><p>💡 '+el.correction+'</p></div>' : '';
+  return '<div class="slide" id="s'+idx+'" data-type="question" data-multi="'+multi+'" data-ans="false"><div class="slide-hdr"><span class="badge badge-quiz">❓ Question</span><span class="ctr">'+(idx+1)+' / '+total+'</span></div><h2 class="slide-title">'+escHtml(el.name)+'</h2><div class="answers">'+answers+'</div>'+correction+'<button class="val-btn" id="v'+idx+'" onclick="validate('+idx+')">Validate answer</button></div>';
+}
+function renderInfo(el, idx, total){
+  return '<div class="slide" id="s'+idx+'"><div class="slide-hdr"><span class="badge badge-info">💬 Reflection</span><span class="ctr">'+(idx+1)+' / '+total+'</span></div><h2 class="slide-title">'+escHtml(el.name)+'</h2><div class="body-content">'+el.body+'</div></div>';
+}
+
+// ─── BUILD MANIFEST ───
+function buildManifest(mod){
+  var safeId = mod.id.replace(/[^a-z0-9]/gi,'-');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="${safeId}-scorm2004" version="1"
+  xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
+  xmlns:adlcp="http://www.adlnet.org/xsd/adlcp_v1p3"
+  xmlns:adlseq="http://www.adlnet.org/xsd/adlseq_v1p3"
+  xmlns:adlnav="http://www.adlnet.org/xsd/adlnav_v1p3"
+  xmlns:imsss="http://www.imsglobal.org/xsd/imsss"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <metadata>
+    <schema>ADL SCORM</schema>
+    <schemaversion>2004 4th Edition</schemaversion>
+    <adlcp:location>metadata.xml</adlcp:location>
+  </metadata>
+  <organizations default="${safeId}-org">
+    <organization identifier="${safeId}-org">
+      <title>${escXml(mod.name)}</title>
+      <item identifier="item-1" identifierref="resource-1">
+        <title>${escXml(mod.name)}</title>
+        <adlcp:dataFromLMS></adlcp:dataFromLMS>
+        <adlcp:timeLimitAction>continue,no message</adlcp:timeLimitAction>
+        <imsss:sequencing>
+          <imsss:deliveryControls completionSetByContent="true" objectiveSetByContent="true"/>
+        </imsss:sequencing>
+      </item>
+    </organization>
+  </organizations>
+  <resources>
+    <resource identifier="resource-1" type="webcontent" adlcp:scormType="sco" href="content/index.html">
+      <file href="content/index.html"/>
+    </resource>
+  </resources>
+</manifest>`;
+}
+
+function buildMetadata(mod){
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<lom xmlns="http://ltsc.ieee.org/xsd/LOM">
+  <general>
+    <identifier><catalog>360Learning</catalog><entry>${mod.id}</entry></identifier>
+    <title><string language="${mod.lang}">${escXml(mod.name)}</string></title>
+    <language>${mod.lang}</language>
+    <description><string language="${mod.lang}">Module exported from 360Learning to SCORM 2004.</string></description>
+  </general>
+  <lifecycle><version><string>1.0</string></version></lifecycle>
+  <technical><format>text/html</format></technical>
+  <educational>
+    <learningResourceType><source>LOMv1.0</source><value>Lecture</value></learningResourceType>
+    <interactivityLevel><source>LOMv1.0</source><value>medium</value></interactivityLevel>
+    <language>${mod.lang}</language>
+  </educational>
+</lom>`;
+}
+
+// ─── SHOW PREVIEW ───
+function showPreview(elements){
+  document.getElementById('welcomeScreen').style.display = 'none';
+  document.getElementById('previewPanel').classList.add('show');
+
+  document.getElementById('previewTitle').textContent = selectedModule.name;
+  document.getElementById('previewInfo').textContent =
+    elements.length + ' slides  ·  ' +
+    elements.filter(function(e){return e.type==='sheet';}).length + ' content pages  ·  ' +
+    elements.filter(function(e){return e.type==='question';}).length + ' questions  ·  SCORM 2004';
+
+  // Content tab
+  var stats = '<div class="stats-bar">' +
+    stat(elements.length, 'Total slides') +
+    stat(elements.filter(function(e){return e.type==='sheet';}).length, 'Content slides') +
+    stat(elements.filter(function(e){return e.type==='question';}).length, 'Quiz questions') +
+    stat(selectedModule.lang.toUpperCase(), 'Language') +
+    '</div>';
+
+  var cards = elements.map(function(el, i){
+    var badgeClass = el.type==='sheet' ? 'badge-content' : el.type==='question' ? 'badge-quiz' : 'badge-info';
+    var badgeLabel = el.type==='sheet' ? '📖 Content' : el.type==='question' ? '❓ Question' : '💬 Reflection';
+    var body = '';
+    if(el.type==='sheet'){
+      var tmp = document.createElement('div');
+      tmp.innerHTML = el.body;
+      body = '<div style="font-size:12px;color:var(--muted);line-height:1.7;">' + tmp.textContent.trim().slice(0,280) + (tmp.textContent.length>280?'…':'') + '</div>';
+    } else if(el.type==='question'){
+      body = (el.answers||[]).map(function(a){
+        var cls = a.valid ? ' valid' : '';
+        return '<div class="answer-row'+cls+'"><span class="check">'+(a.valid?'✓':'○')+'</span>'+escHtml(a.label||'')+'</div>';
+      }).join('');
+    } else {
+      body = '<div style="font-size:12px;color:var(--muted);">Interactive activity (converted to info slide)</div>';
+    }
+    return '<div class="slide-card"><div class="slide-card-header"><h3>'+(i+1)+'. '+escHtml(el.name)+'</h3><span class="slide-type-badge '+badgeClass+'">'+badgeLabel+'</span></div><div class="slide-card-body">'+body+'</div></div>';
+  }).join('');
+
+  document.getElementById('tabContent').innerHTML = stats + cards;
+
+  // Live preview
+  var iframe = document.getElementById('scoFrame');
+  iframe.srcdoc = generatedHtml;
+
+  // Structure tab
+  var safeZipName = selectedModule.name.replace(/[^a-z0-9]/gi,'_').toLowerCase() + '_scorm2004.zip';
+  document.getElementById('zipName').textContent = safeZipName;
+  document.getElementById('zipSize').textContent = formatBytes(generatedZipBlob.size);
+  document.getElementById('htmlSize').textContent = formatBytes(new Blob([generatedHtml]).size) + ' — interactive SCO';
+
+  document.getElementById('xml-manifest').innerHTML = syntaxHL(generatedManifest);
+  document.getElementById('xml-metadata').innerHTML = syntaxHL(generatedMetadata);
+}
+
+function stat(val, label){
+  return '<div class="stat"><div class="stat-val">'+val+'</div><div class="stat-label">'+label+'</div></div>';
+}
+
+// ─── TABS ───
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  event.target.classList.add('active');
+  document.getElementById('tabContent').classList.remove('active');
+  document.getElementById('tabSco').classList.remove('active');
+  document.getElementById('tabStructure').classList.remove('active');
+  document.getElementById('tab'+cap(name)).classList.add('active');
+}
+function cap(s){ return s[0].toUpperCase()+s.slice(1); }
+
+function toggleXml(which){
+  var el = document.getElementById('xml-'+which);
+  el.style.display = el.style.display==='block' ? 'none' : 'block';
+}
+
+function syntaxHL(xml){
+  return xml
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/&lt;(\/?[\w:]+)/g,'<span class="tag">&lt;$1</span>')
+    .replace(/([\w:]+)="([^"]*)"/g,'<span class="attr">$1</span>="<span class="val">$2</span>"');
+}
+
+// ─── DOWNLOAD ───
+function downloadZip(){
+  if(!generatedZipBlob){ notify('❌','Generate the package first'); return; }
+  var safeZipName = selectedModule.name.replace(/[^a-z0-9]/gi,'_').toLowerCase() + '_scorm2004.zip';
+  var url = URL.createObjectURL(generatedZipBlob);
+  var a = document.createElement('a');
+  a.href = url; a.download = safeZipName;
+  a.click();
+  URL.revokeObjectURL(url);
+  notify('⬇️', 'Downloading ' + safeZipName);
+}
+
+// ─── UTILS ───
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escXml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+function formatBytes(b){ if(b<1024)return b+'B'; if(b<1024*1024)return Math.round(b/1024)+'KB'; return (b/1024/1024).toFixed(1)+'MB'; }
+
+function notify(icon, msg){
+  var n = document.getElementById('notif');
+  document.getElementById('notifIcon').textContent = icon;
+  document.getElementById('notifMsg').textContent = msg;
+  n.classList.add('show');
+  setTimeout(function(){ n.classList.remove('show'); }, 3500);
+}
+</script>
+</body>
+</html>
